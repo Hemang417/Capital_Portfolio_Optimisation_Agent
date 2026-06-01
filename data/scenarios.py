@@ -13,6 +13,24 @@ class Scenario:
     risk_sigma_multiplier: float
     eligible_sectors: List[str] = field(default_factory=list)
 
+    def to_document(self) -> str:
+        """Rich text representation used by the TF-IDF vector index."""
+        sector_text = (
+            f"Sectors: {', '.join(self.eligible_sectors)}."
+            if self.eligible_sectors else "Sectors: all."
+        )
+        cf_pct   = round((self.cash_flow_modifier - 1) * 100, 1)
+        dr_bps   = round(self.discount_rate_delta * 100, 1)
+        cap_pct  = round((self.capex_modifier - 1) * 100, 1)
+        sig_mult = round(self.risk_sigma_multiplier, 2)
+        return (
+            f"Scenario {self.id}: {self.name}. {self.description} "
+            f"Cash flows {'increase' if cf_pct >= 0 else 'decrease'} {abs(cf_pct):.1f}%. "
+            f"Discount rates {'rise' if dr_bps >= 0 else 'fall'} {abs(dr_bps):.1f} basis points. "
+            f"Capex {'increases' if cap_pct >= 0 else 'decreases'} {abs(cap_pct):.1f}%. "
+            f"Volatility multiplier {sig_mult}. {sector_text}"
+        )
+
 
 def get_all_scenarios() -> List[Scenario]:
     """

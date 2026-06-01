@@ -108,6 +108,52 @@ class PortfolioAgent:
 
         return adj_npvs, adj_capex, adj_cfs, adj_dr
 
+    def run_query(self, query: str) -> None:
+        """
+        Natural language query mode — agentic RAG resolves the query into a
+        Scenario object, then the existing financial pipeline runs unchanged.
+
+        Shows the Standard RAG result first to illustrate the failure mode
+        (single vector match, no reasoning), then the Agentic RAG result
+        (planned retrieval → confidence scoring → re-query if needed →
+        composed scenario).  Only the Agentic RAG scenario is passed to the
+        financial engine.
+        """
+        from llm.claude_client import ClaudeClient
+        from retrieval.agentic_rag import AgenticRAG
+        from retrieval.scenario_store import ScenarioStore
+        from retrieval.standard_rag import StandardRAG
+
+        print(f"\n{'=' * 72}")
+        print(f"  Agentic RAG — Natural Language Query Mode")
+        print(f"  Budget: £{self.budget:,.0f}  |  MC iterations: {self.mc_iterations:,}")
+        print(f"{'=' * 72}")
+        print(f"\n  Query: \"{query}\"\n")
+
+        store  = ScenarioStore(self.scenarios)
+        client = ClaudeClient()
+
+        # Standard RAG — direct vector match, no reasoning (demonstrates limitation)
+        std_scenario = StandardRAG(store).retrieve(query)
+        print(f"  [Standard RAG]  Mapped to : '{std_scenario.name}'")
+        print(f"                  (direct TF-IDF match — single scenario, no reasoning)\n")
+
+        # Agentic RAG — plan → retrieve → score → re-query → compose
+        print("  [Agentic  RAG]  Planning retrieval ...", flush=True)
+        rag_result = AgenticRAG(store, client).retrieve(query)
+
+        print(f"  [Agentic  RAG]  Composed  : '{rag_result.composed_scenario.name}'")
+        print(f"                  Confidence: {rag_result.confidence:.2f}"
+              f"  |  Retrieval attempts: {rag_result.attempts}")
+        print(f"                  Reasoning : {rag_result.reasoning}")
+        print(f"                  Candidates: "
+              f"{', '.join(s.name for s in rag_result.candidates)}\n")
+
+        # Run the full financial pipeline with the composed scenario
+        run_result = self._run_scenario(rag_result.composed_scenario)
+        self.results.append(run_result)
+        print_scenario_report(run_result)
+
     def _generate_wave1_summary(self) -> None:
         base_case = next(r for r in self.results if r.scenario.id == 1)
         print_wave1_summary(self.results, base_case)
