@@ -619,13 +619,6 @@ with st.sidebar:
         st.success(f"✓ Last run: {st.session_state['last_run']}")
 
     st.markdown("---")
-    st.markdown(
-        '<div style="font-size:0.75rem;color:#3a5a7a;text-align:center">'
-        'MSc Financial Data Analytics<br>'
-        '<a href="https://github.com/Hemang417/Capital_Portfolio_Optimisation_Agent" '
-        'style="color:#00d4ff">GitHub ↗</a></div>',
-        unsafe_allow_html=True,
-    )
 
 
 # ── Hero ──────────────────────────────────────────────────────────────────────
@@ -633,8 +626,8 @@ st.markdown("""
 <div class="hero-section">
   <div class="hero-title">Capital Portfolio Optimisation Agent</div>
   <div class="hero-subtitle">
-    MSc Financial Data Analytics &nbsp;·&nbsp; Autonomous NPV Optimiser &nbsp;·&nbsp;
-    Monte Carlo Risk Engine &nbsp;·&nbsp; Agentic RAG &nbsp;·&nbsp; 22 Scenarios
+    Autonomous NPV Optimiser &nbsp;·&nbsp; Monte Carlo Risk Engine &nbsp;·&nbsp;
+    Agentic RAG &nbsp;·&nbsp; 22 Scenarios
   </div>
   <div class="kpi-grid">
     <div class="kpi-card">
@@ -1114,8 +1107,3 @@ with tab4:
 </div>
 """, unsafe_allow_html=True)
 
-    st.markdown(
-        "**Source Code:** "
-        "[github.com/Hemang417/Capital_Portfolio_Optimisation_Agent]"
-        "(https://github.com/Hemang417/Capital_Portfolio_Optimisation_Agent)"
-    )
