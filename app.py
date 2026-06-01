@@ -18,7 +18,7 @@ st.set_page_config(
     page_title="Capital Portfolio Optimisation Agent",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",   # sidebar hidden by default on mobile
 )
 
 # ── Design constants ──────────────────────────────────────────────────────────
@@ -31,8 +31,9 @@ DARK_LAYOUT = dict(
     template="plotly_dark",
     paper_bgcolor="#0d1117",
     plot_bgcolor="#0d1117",
-    font=dict(color="#c0d8f0", size=12),
-    margin=dict(l=60, r=20, t=50, b=50),
+    font=dict(color="#c0d8f0", size=11),
+    margin=dict(l=40, r=10, t=44, b=40),
+    autosize=True,
 )
 
 SECTOR_COLORS = {
@@ -46,10 +47,10 @@ SECTOR_COLORS = {
 AREA_PALETTE = [CYAN, GREEN, AMBER, "#aa88ff", "#ff6688",
                 "#ff8844", "#88aaff", "#44ffcc", "#ffcc44", "#cc44ff"]
 
-# ── CSS injection ─────────────────────────────────────────────────────────────
+# ── CSS injection (mobile-first) ──────────────────────────────────────────────
 st.markdown("""
 <style>
-/* Base */
+/* ── Base ─────────────────────────────────────────────────────────────────── */
 .stApp { background-color: #0a0e1a; color: #e0e6f0; }
 
 [data-testid="stSidebar"] {
@@ -62,60 +63,75 @@ st.markdown("""
     font-size: 0.85rem;
 }
 
+/* Tighten padding on all screens; extra-tight on mobile */
 .block-container {
-    padding-top: 1.2rem;
-    padding-bottom: 2rem;
+    padding-top: 0.8rem !important;
+    padding-bottom: 2rem !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
     max-width: 1400px;
 }
 
-/* Hero */
+/* ── Hero ─────────────────────────────────────────────────────────────────── */
 .hero-section {
     background: linear-gradient(135deg, #0d1b2a 0%, #0a0e1a 60%, #0d1b2a 100%);
     border: 1px solid #1e3a5f;
     border-radius: 10px;
-    padding: 2rem 2.5rem 1.8rem;
-    margin-bottom: 1.5rem;
+    padding: 1.4rem 1.2rem 1.2rem;
+    margin-bottom: 1rem;
     box-shadow: 0 0 50px rgba(0, 212, 255, 0.07);
 }
 .hero-title {
-    font-size: 2rem;
+    font-size: clamp(1.2rem, 5vw, 2rem);
     font-weight: 700;
     color: #00d4ff;
-    margin: 0 0 0.35rem 0;
+    margin: 0 0 0.3rem 0;
     letter-spacing: 0.01em;
+    word-break: break-word;
 }
 .hero-subtitle {
-    font-size: 0.82rem;
+    font-size: clamp(0.65rem, 2.5vw, 0.82rem);
     color: #5577aa;
-    margin: 0 0 1.4rem 0;
-    letter-spacing: 0.06em;
+    margin: 0 0 1rem 0;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
+    line-height: 1.6;
 }
+
+/* KPI grid: 2 columns on mobile, 4 on desktop */
 .kpi-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 1rem;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.6rem;
 }
+@media (min-width: 640px) {
+    .kpi-grid { grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+    .hero-section { padding: 2rem 2.5rem 1.8rem; }
+}
+
 .kpi-card {
     background: linear-gradient(135deg, #0f1923 0%, #131f2e 100%);
     border: 1px solid #1e3a5f;
     border-radius: 7px;
-    padding: 1rem 1.2rem;
+    padding: 0.75rem 0.9rem;
     transition: box-shadow 0.2s, border-color 0.2s;
+}
+@media (min-width: 640px) {
+    .kpi-card { padding: 1rem 1.2rem; }
 }
 .kpi-card:hover {
     box-shadow: 0 0 22px rgba(0, 212, 255, 0.18);
     border-color: #00d4ff;
 }
 .kpi-label {
-    font-size: 0.68rem;
+    font-size: 0.63rem;
     color: #5577aa;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 0.45rem;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.35rem;
 }
 .kpi-value {
-    font-size: 1.65rem;
+    font-size: clamp(1.1rem, 4vw, 1.65rem);
     font-weight: 700;
     color: #00d4ff;
     font-variant-numeric: tabular-nums;
@@ -124,22 +140,28 @@ st.markdown("""
 .kpi-value.green  { color: #00ff88; }
 .kpi-value.white  { color: #e0e6f0; }
 
-/* Tabs */
+/* ── Tabs ─────────────────────────────────────────────────────────────────── */
 [data-testid="stTabs"] [role="tablist"] {
     background-color: transparent;
     border-bottom: 2px solid #1e2a3a;
     gap: 0;
     margin-bottom: 0.5rem;
+    overflow-x: auto;           /* allow horizontal scroll on tiny screens */
+    -webkit-overflow-scrolling: touch;
 }
 [data-testid="stTabs"] button[role="tab"] {
     color: #5577aa;
-    font-size: 0.85rem;
+    font-size: clamp(0.72rem, 2.5vw, 0.85rem);
     font-weight: 500;
-    padding: 0.55rem 1.4rem;
+    padding: 0.5rem 0.8rem;
     border-radius: 0;
     border-bottom: 2px solid transparent;
     margin-bottom: -2px;
     background: transparent !important;
+    white-space: nowrap;
+}
+@media (min-width: 640px) {
+    [data-testid="stTabs"] button[role="tab"] { padding: 0.55rem 1.4rem; }
 }
 [data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
     color: #00d4ff !important;
@@ -150,110 +172,131 @@ st.markdown("""
     background: rgba(0,212,255,0.04) !important;
 }
 
-/* Metric cards */
+/* ── Metric cards ─────────────────────────────────────────────────────────── */
 [data-testid="stMetric"] {
     background: linear-gradient(135deg, #0f1923 0%, #131f2e 100%);
     border: 1px solid #1e3a5f;
     border-radius: 7px;
-    padding: 0.8rem 1rem;
+    padding: 0.6rem 0.75rem;
 }
-[data-testid="stMetricLabel"] { color: #5577aa !important; font-size: 0.72rem !important; text-transform: uppercase; letter-spacing: 0.08em; }
-[data-testid="stMetricValue"] { color: #00d4ff !important; font-size: 1.35rem !important; font-weight: 700 !important; }
+[data-testid="stMetricLabel"] {
+    color: #5577aa !important;
+    font-size: clamp(0.6rem, 2vw, 0.72rem) !important;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+[data-testid="stMetricValue"] {
+    color: #00d4ff !important;
+    font-size: clamp(1rem, 3.5vw, 1.35rem) !important;
+    font-weight: 700 !important;
+}
 
-/* Section headers */
+/* ── Section headers ──────────────────────────────────────────────────────── */
 h2, h3 {
     color: #c0d8f0 !important;
     font-weight: 600 !important;
     border-left: 3px solid #00d4ff;
     padding-left: 0.7rem;
-    margin-top: 1.5rem !important;
+    margin-top: 1.2rem !important;
+    font-size: clamp(0.95rem, 3vw, 1.2rem) !important;
 }
 
-/* Dataframe */
+/* ── Dataframe ────────────────────────────────────────────────────────────── */
 [data-testid="stDataFrame"] {
     border: 1px solid #1e2a3a;
     border-radius: 6px;
     overflow: hidden;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
-/* RAG comparison cards */
+/* ── RAG comparison cards ─────────────────────────────────────────────────── */
 .rag-card {
     background: #0f1923;
     border: 1px solid #1e3a5f;
     border-radius: 7px;
-    padding: 1rem 1.2rem;
+    padding: 0.85rem 1rem;
     margin-bottom: 0.5rem;
 }
 .rag-card.agent   { border-color: #00ff88; box-shadow: 0 0 18px rgba(0,255,136,0.09); }
 .rag-card.standard{ border-color: #ff4444; box-shadow: 0 0 18px rgba(255,68,68,0.09); }
-.rag-tag { font-size: 0.67rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.35rem; font-weight: 600; }
+.rag-tag { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.3rem; font-weight: 600; }
 .rag-tag.agent    { color: #00ff88; }
 .rag-tag.standard { color: #ff4444; }
-.rag-name { font-size: 1.05rem; font-weight: 600; color: #e0e6f0; }
-.rag-meta { font-size: 0.78rem; color: #5577aa; margin-top: 0.35rem; line-height: 1.5; }
+.rag-name { font-size: clamp(0.9rem, 3vw, 1.05rem); font-weight: 600; color: #e0e6f0; }
+.rag-meta { font-size: 0.75rem; color: #5577aa; margin-top: 0.3rem; line-height: 1.5; }
 
-/* Params card */
+/* ── Params / arch cards ──────────────────────────────────────────────────── */
 .params-card {
     background: #0f1923;
     border: 1px solid #1e3a5f;
     border-radius: 7px;
-    padding: 1rem 1.5rem;
+    padding: 0.85rem 1rem;
     font-family: 'Courier New', monospace;
-    font-size: 0.85rem;
+    font-size: clamp(0.72rem, 2.5vw, 0.85rem);
     color: #8fc8e8;
     line-height: 1.9;
     margin-bottom: 1rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
-
-/* Arch card */
 .arch-card {
     background: #0f1923;
     border: 1px solid #1e3a5f;
     border-radius: 7px;
-    padding: 1.5rem 2rem;
+    padding: 1rem 1rem;
     font-family: 'Courier New', monospace;
-    font-size: 0.8rem;
+    font-size: clamp(0.65rem, 2vw, 0.8rem);
     color: #8fc8e8;
     line-height: 1.8;
     white-space: pre;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
-/* Badge chips */
+/* ── Badge chips ──────────────────────────────────────────────────────────── */
 .badge {
     display: inline-block;
     background: #131f2e;
     border: 1px solid #1e3a5f;
     border-radius: 20px;
-    padding: 0.22rem 0.75rem;
-    font-size: 0.78rem;
+    padding: 0.2rem 0.65rem;
+    font-size: 0.75rem;
     color: #00d4ff;
-    margin: 0.2rem 0.15rem;
+    margin: 0.2rem 0.12rem;
     font-weight: 500;
 }
 
-/* Divider */
-hr { border-color: #1e2a3a !important; margin: 1.2rem 0 !important; }
-
-/* Info / warning boxes */
+/* ── Misc ─────────────────────────────────────────────────────────────────── */
+hr { border-color: #1e2a3a !important; margin: 1rem 0 !important; }
 [data-testid="stAlert"] {
     background: #0f1923 !important;
     border: 1px solid #1e3a5f !important;
     border-radius: 6px !important;
     color: #8899aa !important;
 }
-
-/* Button */
 [data-testid="baseButton-primary"] {
     background: linear-gradient(135deg, #0066aa, #0088cc) !important;
     border: 1px solid #00d4ff !important;
     color: white !important;
     font-weight: 600 !important;
     letter-spacing: 0.03em;
+    width: 100% !important;     /* full-width tap target on mobile */
 }
 [data-testid="baseButton-primary"]:hover {
     background: linear-gradient(135deg, #0088cc, #00aadd) !important;
     box-shadow: 0 0 20px rgba(0,212,255,0.3) !important;
 }
+
+/* Expander mobile-friendly */
+[data-testid="stExpander"] {
+    border: 1px solid #1e2a3a !important;
+    border-radius: 7px !important;
+    background: #0f1923 !important;
+}
+
+/* Make selectboxes readable on mobile */
+[data-testid="stSelectbox"] label { font-size: 0.78rem !important; color: #8899aa !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -471,8 +514,8 @@ def _build_scenario_bar(df: pd.DataFrame) -> go.Figure:
         title=dict(text="Strategic Value Across 22 Economic Scenarios",
                    font=dict(color=CYAN, size=13)),
         xaxis_title="Strategic Value (£M)",
-        yaxis=dict(automargin=True, tickfont=dict(size=9.5)),
-        height=660,
+        yaxis=dict(automargin=True, tickfont=dict(size=8.5)),
+        height=500,
     )
     return fig
 
@@ -550,9 +593,9 @@ def _build_scenario_heatmap(df: pd.DataFrame) -> go.Figure:
         **DARK_LAYOUT,
         title=dict(text="Scenario Metrics Heatmap",
                    font=dict(color=CYAN, size=13)),
-        xaxis=dict(tickangle=-20, tickfont=dict(size=10)),
-        yaxis=dict(automargin=True, tickfont=dict(size=9)),
-        height=660,
+        xaxis=dict(tickangle=-20, tickfont=dict(size=9)),
+        yaxis=dict(automargin=True, tickfont=dict(size=8)),
+        height=500,
     )
     return fig
 
