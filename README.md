@@ -4,7 +4,8 @@
 
 A modular financial agent that autonomously selects optimal asset allocations across 22 distinct
 operational scenarios using net present value ranking, a budget-constrained greedy optimiser, and a
-10,000-iteration Monte Carlo shock engine — with an agentic RAG layer for natural language querying.
+10,000-iteration Monte Carlo shock engine — with an agentic RAG layer for natural language querying
+and a Bloomberg-style Streamlit dashboard.
 
 > **Headline results (base case)**
 > - Capital budget: **£45,000,000**
@@ -25,30 +26,32 @@ operational scenarios using net present value ranking, a budget-constrained gree
 7. [Budget-Constrained Optimiser](#budget-constrained-optimiser)
 8. [Monte Carlo Shock Engine](#monte-carlo-shock-engine)
 9. [Agentic RAG — Natural Language Query](#agentic-rag--natural-language-query)
-10. [Web App — Streamlit](#web-app--streamlit)
-11. [Quick Start](#quick-start)
-12. [Running the Agent](#running-the-agent)
-13. [Output Files](#output-files)
-14. [Using Real Firm Data](#using-real-firm-data)
-15. [Adjusting the Model](#adjusting-the-model)
-16. [Dependencies](#dependencies)
+10. [Web App — Streamlit Dashboard](#web-app--streamlit-dashboard)
+11. [Test Suite](#test-suite)
+12. [Quick Start](#quick-start)
+13. [Running the Agent](#running-the-agent)
+14. [Output Files](#output-files)
+15. [Using Real Firm Data](#using-real-firm-data)
+16. [Adjusting the Model](#adjusting-the-model)
+17. [Dependencies](#dependencies)
 
 ---
 
 ## Project Overview
 
 The agent solves a capital allocation problem: given a fixed investment budget and a pipeline of
-strategic projects, which combination maximises NPV — and how resilient is that portfolio under
-economic stress?
+strategic projects, which combination maximises net present value — and how resilient is that
+portfolio under economic stress?
 
-Four key capabilities:
+Five key capabilities:
 
 | Capability | Detail |
 |---|---|
 | **Modular architecture** | Raw data layer (`data/`) separated from calculation logic (`engine/`) and orchestration (`agent/`) |
 | **Autonomous scenario processing** | Loops all 22 scenarios with zero manual reconfiguration between runs |
 | **Probabilistic stress testing** | 10,000-iteration Monte Carlo confirms portfolio resilience across every scenario |
-| **Agentic RAG** | Natural language queries are resolved to scenario parameters via a reasoning-driven retrieval loop with confidence scoring |
+| **Agentic RAG** | Natural language queries resolved to scenario parameters via reasoning-driven retrieval with confidence scoring |
+| **Bloomberg-style dashboard** | Interactive Streamlit web app with 8 Plotly charts, drill-down, and scenario comparison |
 
 ---
 
@@ -56,15 +59,15 @@ Four key capabilities:
 
 ```
 +----------------------------------------------------------+
-|              app.py  (Streamlit web interface)           |
+|         app.py  (Streamlit Bloomberg-style dashboard)    |
 +----------------------------------------------------------+
 |                      main.py  (CLI)                      |
 +----------------------------+-----------------------------+
                              |
 +----------------------------v-----------------------------+
 |              agent/portfolio_agent.py                    |
-|   run()           — loops 22 scenarios autonomously      |
-|   run_query()     — agentic RAG mode                     |
+|   run()           -- loops 22 scenarios autonomously     |
+|   run_query()     -- agentic RAG mode                    |
 +----+---------------------+--------------------------------+
      |                     |
 +----v----+      +---------v-------------------------------+
@@ -82,16 +85,15 @@ Four key capabilities:
      |
 +----v----------------------------------------------------+
 |              retrieval/  (Agentic RAG layer)            |
-|  scenario_store.py  — TF-IDF vector index               |
-|  standard_rag.py    — direct lookup (first version)     |
-|  agentic_rag.py     — plan -> retrieve -> score -> compose|
+|  scenario_store.py  -- TF-IDF vector index              |
+|  standard_rag.py    -- direct lookup (baseline)         |
+|  agentic_rag.py     -- plan -> retrieve -> score -> compose|
 +----+----------------------------------------------------+
      |
 +----v----------------------------------------------------+
 |              llm/claude_client.py  (Groq API)           |
-|  llama-3.1-8b-instant      — query planning/refinement  |
-|  llama-3.3-70b-versatile   — confidence scoring/compose |
-|  [Anthropic SDK code kept, commented for reference]     |
+|  llama-3.1-8b-instant     -- query planning/refinement  |
+|  llama-3.3-70b-versatile  -- confidence scoring/compose |
 +----------------------------------------------------------+
 ```
 
@@ -102,7 +104,7 @@ Four key capabilities:
 ```
 Capital_Portfolio_Optimisation_Agent/
 |
-+-- app.py                       # Streamlit web interface
++-- app.py                       # Streamlit Bloomberg-style dashboard
 +-- main.py                      # CLI entry point
 +-- models.py                    # Shared ScenarioRunResult dataclass
 +-- requirements.txt             # Python dependencies
@@ -115,7 +117,7 @@ Capital_Portfolio_Optimisation_Agent/
 |   +-- scenarios.py             # 22 scenario definitions + to_document() for RAG
 |
 +-- engine/
-|   +-- npv_engine.py            # calculate_npv, calculate_irr
+|   +-- npv_engine.py            # calculate_npv, calculate_irr, npv_to_capital_ratio
 |   +-- optimizer.py             # Greedy knapsack optimiser (BUDGET = 45M GBP)
 |   +-- monte_carlo.py           # Vectorised 10,000-iteration MC engine
 |
@@ -124,15 +126,19 @@ Capital_Portfolio_Optimisation_Agent/
 |
 +-- retrieval/
 |   +-- scenario_store.py        # TF-IDF vector index over 22 scenario documents
-|   +-- standard_rag.py          # Direct cosine similarity lookup (first version)
+|   +-- standard_rag.py          # Direct cosine similarity lookup (baseline)
 |   +-- agentic_rag.py           # Plan -> retrieve -> confidence -> re-query -> compose
 |
 +-- llm/
-|   +-- claude_client.py         # Groq API wrapper (Anthropic code commented)
+|   +-- claude_client.py         # Groq API wrapper (Anthropic SDK kept, commented)
 |
 +-- reporting/
 |   +-- console_reporter.py      # Formatted console output per scenario
 |   +-- file_reporter.py         # JSON + CSV file writer
+|
++-- tests/
+|   +-- conftest.py              # Shared pytest fixtures
+|   +-- test_suite.py            # 75 tests across 9 classes
 |
 +-- .streamlit/
 |   +-- config.toml              # Dark theme for Streamlit Cloud
@@ -168,8 +174,7 @@ For each of the 22 scenarios:
       Select highest-PI projects until budget is exhausted
 
 6. Monte Carlo stress test (10,000 iterations):
-      Shock each cash flow: CF_shocked = CF x (1 + sigma x epsilon)
-      epsilon ~ N(0,1)
+      Shock each cash flow: CF_shocked = CF x (1 + sigma x epsilon),  epsilon ~ N(0,1)
       Report: mean, std dev, P5, P95, deficit probability
 
 7. Print scenario report, save JSON + CSV
@@ -199,11 +204,12 @@ For each of the 22 scenarios:
 ## Data Layer — Excel Pipeline
 
 **`investment_pipeline.xlsx`** is the project data source. Each row is one investment project.
-The file ships with 18 sample UK-flavoured projects. Replace them with your firm's real pipeline.
+The file ships with 18 sample UK-flavoured projects. Replace them with your firm's real pipeline —
+no code changes required.
 
 ### What the Excel file is for
 
-The Excel file provides the **investment projects** (the *what* to invest in):
+Provides the **investment projects** (the *what* to invest in):
 - Project names, sectors, upfront costs
 - 8 years of projected net cash flows
 - Risk-adjusted discount rates
@@ -307,6 +313,7 @@ Total: £45,000,000 capital deployed, £929,000,000 NPV.
 **File:** `engine/monte_carlo.py`
 
 Fully vectorised NumPy implementation across a `(10,000 x n_assets x 8 years)` tensor.
+No Python loops over iterations — the entire simulation runs as a single NumPy tensor operation.
 
 **Shock formula:**
 ```
@@ -316,17 +323,17 @@ where:
   n              = iteration index (0 to 9,999)
   a              = asset index
   t              = year index (0 to 7)
-  epsilon        ~ N(0,1)  standard normal random shock
+  epsilon        ~ N(0,1)  independent standard normal shock per CF
   sigma_eff[a]   = asset.risk_sigma x scenario.risk_sigma_multiplier
 ```
 
 **Base-case output:**
 ```
-Mean portfolio NPV    : 928,943,777 GBP
-Std dev               :  14,013,510 GBP
-5th percentile  (P05) : 906,358,375 GBP  <- worst 5% of outcomes
-95th percentile (P95) : 952,071,382 GBP
-Deficit probability   : 0.0000%
+Mean portfolio NPV    :   928,943,777 GBP
+Std dev               :    14,013,510 GBP
+5th percentile  (P05) :   906,358,375 GBP  <- worst 5% of outcomes
+95th percentile (P95) :   952,071,382 GBP
+Deficit probability   :        0.0000%
 ```
 
 ---
@@ -336,36 +343,43 @@ Deficit probability   : 0.0000%
 **Files:** `retrieval/`, `llm/claude_client.py`
 
 Allows querying the agent in plain English. The retrieval layer resolves the query into a custom
-`Scenario` object, which the financial engine then runs identically to any of the 22 hardcoded ones.
+`Scenario` object, which the financial engine runs identically to any of the 22 hardcoded ones.
 
-### The failure mode that motivated this (Standard RAG)
+### The failure mode that motivated the rebuild (Standard RAG)
 
-Direct TF-IDF vector lookup maps a query to a **single** closest scenario:
+An early implementation used direct TF-IDF vector lookup — mapping a query to the single closest
+scenario with no reasoning step:
 
 ```
 Query:  "moderate tech slowdown with rising interest rates"
-Standard RAG -> "Recession - Mild"   (drops both the tech and rate components)
+Standard RAG -> "Recession - Mild"   (drops both the tech and rate components entirely)
 ```
 
-### How the agentic layer fixes it
+This caused corrupted NPV calculations downstream when queries described multi-component economic
+conditions. The standard RAG was kept in `retrieval/standard_rag.py` as a baseline for comparison.
+
+### How the agentic layer resolves it
 
 ```
-Step 1  plan_retrieval     LLM reads query, produces targeted search terms
+Step 1  plan_retrieval     LLM analyses query, produces targeted search terms
 Step 2  vector search      TF-IDF retrieves top-3 scenario candidates
-Step 3  score_confidence   LLM scores 0.0-1.0 — does this cover all stressors?
-Step 4  re-query loop      If score < 0.70: LLM refines terms, repeat (max 3x)
-Step 5  compose_scenario   LLM blends candidates into a single Scenario object
+Step 3  score_confidence   LLM scores 0.0-1.0 -- does this cover all stressors?
+Step 4  re-query loop      If score < 0.70: LLM refines terms, repeat (max 3 attempts)
+Step 5  compose_scenario   LLM blends candidate parameters into a single Scenario
 ```
 
 Agentic result for the same query:
 ```
 Composed: "Tech Slowdown + Rate Pressure"
-  cash_flow_modifier   = 0.90   (blends Tech Slump + Rate Surge)
-  discount_rate_delta  = +0.025
-  capex_modifier       = 1.05
-  risk_sigma_multiplier= 1.25
-  confidence           = 0.84,  attempts = 1
+  cash_flow_modifier    = 0.90    (blends Tech Slump 0.80 + Rate Surge 1.00)
+  discount_rate_delta   = +0.025  (blends +0.03 and +0.02)
+  capex_modifier        = 1.05
+  risk_sigma_multiplier = 1.25
+  confidence            = 0.84,  attempts = 1
 ```
+
+The agent only proceeds to the financial engine once confidence is sufficient, preventing
+unreliable context from reaching the NPV calculations.
 
 ### LLM backend
 
@@ -374,9 +388,8 @@ Composed: "Tech Slowdown + Rate Pressure"
 | `llama-3.1-8b-instant` (Groq) | Fast — query planning and refinement |
 | `llama-3.3-70b-versatile` (Groq) | Accurate — confidence scoring and scenario composition |
 
-Groq is free at [console.groq.com](https://console.groq.com). The Anthropic SDK implementation
-(claude-haiku + claude-sonnet with prompt caching) is kept fully commented in `llm/claude_client.py`
-for reference and easy switching.
+Groq provides free API access at [console.groq.com](https://console.groq.com). The Anthropic SDK
+implementation with prompt caching is kept in `llm/claude_client.py` (commented) for reference.
 
 ### Usage
 
@@ -387,17 +400,20 @@ python main.py --query "What happens to our portfolio in a tech crash with risin
 
 ---
 
-## Web App — Streamlit
+## Web App — Streamlit Dashboard
 
 **File:** `app.py`
 
-A browser-based interface with three tabs:
+A Bloomberg-style dark financial dashboard built with Streamlit and Plotly.
 
-| Tab | What it does |
+### Four tabs
+
+| Tab | Contents |
 |---|---|
-| 22-Scenario Analysis | Runs all scenarios, shows Wave-1 metrics, portfolio table, NPV chart, full results table, CSV download |
-| Natural Language Query | Standard RAG vs Agentic RAG side-by-side, composed scenario params, full NPV/MC results |
-| About | Architecture overview and key metrics |
+| **Portfolio Dashboard** | Per-scenario progress bar, Wave-1 KPI cards, NPV waterfall chart, sector allocation donut, Monte Carlo distribution histogram (P05/Mean/P95), 8-year stacked cashflow area chart, portfolio table with IRR column, scenario drill-down expander |
+| **Scenario Analysis** | 22-scenario horizontal bar (red-to-green gradient), risk-return scatter plot (base case starred), scenario metrics heatmap, side-by-side scenario A vs B comparison |
+| **Natural Language Query** | Standard RAG card (red) vs Agentic RAG card (green), composed scenario parameters, full NPV/MC results, query vs base-case delta chart |
+| **About** | Architecture diagram, key metrics table, tech stack |
 
 ### Run locally
 
@@ -418,6 +434,46 @@ streamlit run app.py
 
 ---
 
+## Test Suite
+
+**Files:** `tests/conftest.py`, `tests/test_suite.py`
+
+A rigorous pytest suite covering correctness, edge cases, adversarial inputs, and statistical
+invariants across every module. **75 tests across 9 classes — all passing in under 5 seconds.**
+
+```bash
+python -m pytest tests/test_suite.py -v
+```
+
+### Coverage by class
+
+| Class | Tests | What is verified |
+|---|---|---|
+| `TestNPVEngine` | 12 | Known-value NPV assertions (hand-computed), IRR binary search convergence, NaN on no sign-change, profitability index formula, 10,000-call vectorisation performance |
+| `TestOptimizer` | 14 | PI ordering, budget never exceeded, `per_asset_npv` integrity, real 929M base-case assertion, empty portfolio, all-negative NPV, exact budget fit, over-budget rejection, stable sort on PI ties, 1,000-asset performance |
+| `TestMonteCarlo` | 11 | Zero deficit on real base-case portfolio, MC mean within 2% of deterministic NPV, P05 < mean < P95 ordering, reproducibility with fixed seed, zero-sigma degeneracy, n=10k vs n=50k convergence, empty-asset short-circuit |
+| `TestScenarios` | 8 | Exactly 22 scenarios, unique IDs 1–22, base-case neutral modifiers, severe recession has lowest CF modifier, `to_document()` contents, valid sector names, modifier sanity ranges |
+| `TestAssets` | 6 | 18 assets loaded, unique IDs, 8-year cash flows, discount rate and sigma in valid ranges, `FileNotFoundError` on missing Excel |
+| `TestScenarioStore` | 7 | `top_k` count, cosine scores ∈ [0,1], sorted descending, known-query semantic routing, empty query no crash |
+| `TestStandardRAG` | 4 | Return type, semantic routing, limitation proof (single result for multi-component query) |
+| `TestAgenticRAG` | 8 | All LLM calls mocked — confident first attempt skips re-query, low confidence triggers refinement loop, `MAX_ATTEMPTS` respected, bad-JSON fallback, `CONFIDENCE_THRESHOLD = 0.70`, candidates list populated |
+| `TestIntegration` | 5 | Full real-data pipeline: base case 929M, all 22 scenarios complete without error, recession < base < optimistic NPV ordering, sector filter enforced in tech-only scenario |
+
+### Sample output
+
+```
+tests/test_suite.py::TestNPVEngine::test_npv_zero_cashflows PASSED
+tests/test_suite.py::TestNPVEngine::test_npv_single_year_breakeven PASSED
+tests/test_suite.py::TestNPVEngine::test_irr_known_value PASSED
+...
+tests/test_suite.py::TestIntegration::test_base_case_npv_is_929M PASSED
+tests/test_suite.py::TestIntegration::test_sector_filter_respected_tech_only PASSED
+
+75 passed in 4.52s
+```
+
+---
+
 ## Quick Start
 
 ```bash
@@ -428,11 +484,14 @@ cd Capital_Portfolio_Optimisation_Agent
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Run the agent (uses investment_pipeline.xlsx included in repo)
+# 3. Run the agent (investment_pipeline.xlsx included)
 python main.py
 
-# 4. Or launch the web app
+# 4. Or launch the web dashboard
 streamlit run app.py
+
+# 5. Run the test suite
+python -m pytest tests/test_suite.py -v
 ```
 
 ---
@@ -440,7 +499,7 @@ streamlit run app.py
 ## Running the Agent
 
 ```bash
-# Default run — all 22 scenarios, 45M budget, 10,000 MC iterations
+# Default run -- all 22 scenarios, £45M budget, 10,000 MC iterations
 python main.py
 
 # Custom budget
@@ -449,7 +508,7 @@ python main.py --budget 60000000
 # Custom Monte Carlo iterations
 python main.py --mc-iterations 50000
 
-# Agentic RAG mode (requires GROQ_API_KEY)
+# Natural language query mode (requires GROQ_API_KEY)
 python main.py --query "What if there is a tech crash with rising interest rates?"
 
 # Combine flags
@@ -499,8 +558,8 @@ All output is saved to the `output/` directory, created automatically on first r
 ## Using Real Firm Data
 
 1. Open `investment_pipeline.xlsx`
-2. Replace the sample rows (P01-P18) with your firm's actual projects
-3. Run `python main.py` — no code changes needed
+2. Replace the sample rows (P01–P18) with your firm's actual investment projects
+3. Run `python main.py` — no code changes required
 
 To regenerate the sample template:
 ```bash
@@ -513,14 +572,14 @@ python create_sample_data.py
 
 | What to change | How |
 |---|---|
-| Capital budget (45M) | `python main.py --budget 60000000` or edit `BUDGET_GBP` in `engine/optimizer.py` |
-| Portfolio NPV (929M) | Increase cash flows Y1-Y8 in `investment_pipeline.xlsx` |
-| Return multiplier (20.64x) | Derived automatically as Total NPV / Budget |
+| Capital budget (£45M) | `python main.py --budget 60000000` or edit `BUDGET_GBP` in `engine/optimizer.py` |
+| Portfolio NPV (£929M) | Increase cash flows Y1–Y8 in `investment_pipeline.xlsx` |
+| Return multiplier (20.64×) | Derived automatically as Total NPV / Budget |
 | Deficit probability | Lower `risk_sigma` in Excel, or increase cash flows relative to capex |
 | Scenario definitions | Edit `data/scenarios.py` |
-| Sector filters | Edit `eligible_sectors` in `data/scenarios.py` |
+| Sector filters per scenario | Edit `eligible_sectors` in `data/scenarios.py` |
 | MC iterations | `python main.py --mc-iterations 50000` |
-| LLM backend | Switch Groq/Anthropic in `llm/claude_client.py` (both implementations present) |
+| LLM backend | Switch Groq / Anthropic in `llm/claude_client.py` (both implementations present) |
 
 ---
 
@@ -529,10 +588,12 @@ python create_sample_data.py
 ```
 numpy>=1.26.0       vectorised NPV and Monte Carlo calculations
 pandas>=2.0.0       Excel pipeline reading
-openpyxl>=3.1.0     Excel file support
+openpyxl>=3.1.0     Excel file support (.xlsx)
 groq>=0.9.0         Groq API for agentic RAG (free tier)
-scikit-learn>=1.3.0 TF-IDF vector index for retrieval
-streamlit>=1.35.0   Web interface
+scikit-learn>=1.3.0 TF-IDF vector index for scenario retrieval
+streamlit>=1.35.0   Web dashboard
+plotly>=5.18.0      Interactive financial charts
+pytest>=7.4.0       Test suite
 ```
 
 ```bash
@@ -541,4 +602,4 @@ pip install -r requirements.txt
 
 ---
 
-*Built as part of MSc Financial Data Analytics.*
+*MSc Financial Data Analytics*
