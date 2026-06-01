@@ -157,12 +157,10 @@ with tab1:
         st.divider()
         st.subheader("Full 22-Scenario Results Table")
         st.dataframe(
-            df.style.background_gradient(
-                subset=["Strategic Value (£M)", "Return Multiplier"], cmap="Blues"
-            ).format({
+            df.style.format({
                 "Capital Deployed (£M)": "{:.2f}",
                 "Strategic Value (£M)": "{:.1f}",
-                "Return Multiplier": "{:.2f}×",
+                "Return Multiplier": "{:.2f}x",
                 "Deficit Prob (%)": "{:.4f}%",
             }),
             use_container_width=True,
