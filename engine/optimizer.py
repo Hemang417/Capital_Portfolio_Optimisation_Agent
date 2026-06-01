@@ -13,6 +13,7 @@ class OptimizationResult:
     total_npv: float
     remaining_budget: float
     profitability_indices: Dict[str, float]
+    per_asset_npv: Dict[str, float] = field(default_factory=dict)
 
 
 def greedy_knapsack_optimizer(
@@ -55,4 +56,5 @@ def greedy_knapsack_optimizer(
         total_npv=total_npv,
         remaining_budget=budget - total_capex,
         profitability_indices=pis,
+        per_asset_npv={a.id: scenario_npvs[a.id] for a in selected},
     )
