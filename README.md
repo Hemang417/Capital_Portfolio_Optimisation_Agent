@@ -1,7 +1,5 @@
 # Capital Portfolio Optimisation Agent
 
-**MSc Financial Data Analytics | Python · NumPy · Monte Carlo**
-
 A modular financial agent that autonomously selects optimal asset allocations across 22 distinct operational scenarios using net present value ranking, a budget-constrained greedy optimiser, and a 10,000-iteration Monte Carlo shock engine.
 
 > **Headline results (base case)**
@@ -389,5 +387,3 @@ pip install -r requirements.txt
 ```
 
 ---
-
-*Built as part of MSc Financial Data Analytics.*
