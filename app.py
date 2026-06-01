@@ -270,10 +270,13 @@ def _load_scenarios():
     from data.scenarios import get_all_scenarios
     return get_all_scenarios()
 
-def run_all_scenarios(budget: float, mc_iters: int, seed: int):
+def run_all_scenarios(budget: float, mc_iters: int, seed: int,
+                      progress_cb=None):
     from agent.portfolio_agent import PortfolioAgent
     agent = PortfolioAgent(budget=budget, mc_iterations=mc_iters, random_seed=seed)
-    for scenario in agent.scenarios:
+    for i, scenario in enumerate(agent.scenarios):
+        if progress_cb:
+            progress_cb(i, scenario.name)
         result = agent._run_scenario(scenario)
         agent.results.append(result)
     return agent.results
@@ -612,6 +615,9 @@ with st.sidebar:
     if groq_key:
         os.environ["GROQ_API_KEY"] = groq_key
 
+    if "last_run" in st.session_state:
+        st.success(f"✓ Last run: {st.session_state['last_run']}")
+
     st.markdown("---")
     st.markdown(
         '<div style="font-size:0.75rem;color:#3a5a7a;text-align:center">'
@@ -669,16 +675,32 @@ with tab1:
     st.caption("Run all 22 scenarios and explore the optimal portfolio in the base case.")
 
     if st.button("▶  Run Full Analysis", type="primary", key="run_all"):
-        with st.spinner(f"Running 22 scenarios · {mc_iters:,} Monte Carlo iterations each…"):
-            try:
-                results = run_all_scenarios(budget, mc_iters, int(seed))
-                st.session_state["results"] = results
-                st.session_state["budget"]  = budget
-            except Exception as e:
-                st.error(f"Analysis error: {e}")
+        prog      = st.progress(0.0, text="Initialising…")
+        prog_text = st.empty()
+        try:
+            def _cb(i, name):
+                pct = (i + 1) / 22
+                prog.progress(pct,
+                    text=f"Scenario {i+1}/22 — {name}")
+            results = run_all_scenarios(budget, mc_iters, int(seed),
+                                        progress_cb=_cb)
+            st.session_state["results"]  = results
+            st.session_state["budget"]   = budget
+            st.session_state["last_run"] = f"£{budget_m}M · {mc_iters:,} iters"
+            prog.empty()
+            prog_text.empty()
+        except Exception as e:
+            prog.empty()
+            st.error(f"Analysis error: {e}")
 
     if "results" not in st.session_state:
-        st.info("Configure parameters in the sidebar, then click **▶ Run Full Analysis**.")
+        st.markdown("""
+<div style="background:#0f1923;border:1px solid #1e3a5f;border-radius:7px;
+padding:2.5rem;text-align:center;margin-top:1rem">
+  <div style="font-size:2.5rem;margin-bottom:0.6rem">📊</div>
+  <div style="font-size:1rem;color:#8899aa">Configure parameters in the sidebar,
+  then click <b style="color:#00d4ff">▶ Run Full Analysis</b> to load results.</div>
+</div>""", unsafe_allow_html=True)
     else:
         results     = st.session_state["results"]
         run_budget  = st.session_state.get("budget", budget)
@@ -719,6 +741,12 @@ with tab1:
                             use_container_width=True,
                             config={"displayModeBar": True,
                                     "modeBarButtonsToRemove": ["toImage"]})
+            # MC stats summary row
+            mc = base_result.monte_carlo
+            ms1, ms2, ms3 = st.columns(3)
+            ms1.metric("Std Dev",      f"£{mc.std_total_npv/1e6:.1f}M")
+            ms2.metric("VaR (95%)",    f"£{(mc.mean_total_npv - mc.p5_total_npv)/1e6:.1f}M below mean")
+            ms3.metric("P95 Upside",   f"£{mc.p95_total_npv/1e6:,.0f}M")
         with col_r2:
             st.plotly_chart(
                 _build_cashflow_area_chart(base_result, base_result.scenario),
@@ -726,18 +754,22 @@ with tab1:
                 config={"displayModeBar": True,
                         "modeBarButtonsToRemove": ["toImage"]})
 
-        # Row 4: Portfolio table
+        # Row 4: Portfolio table with IRR column
         st.markdown("### Selected Portfolio — Base Case")
+        from engine.npv_engine import calculate_irr
         port_rows = []
         for asset in base_result.optimization.selected_assets:
             pi  = base_result.optimization.profitability_indices.get(asset.id, 0)
             npv = base_result.optimization.per_asset_npv.get(asset.id, 0)
+            raw_irr = calculate_irr([-asset.capital_required] + asset.annual_cash_flows)
+            irr_str = f"{raw_irr*100:.1f}%" if not np.isnan(raw_irr) else "N/A"
             port_rows.append({
                 "Project":       asset.name,
                 "Sector":        asset.sector,
                 "Capex (£M)":    round(asset.capital_required / 1e6, 2),
                 "NPV (£M)":      round(npv / 1e6, 1),
                 "PI":            round(pi, 3),
+                "IRR":           irr_str,
             })
         st.dataframe(
             pd.DataFrame(port_rows).style.format({
@@ -749,6 +781,33 @@ with tab1:
             hide_index=True,
         )
 
+        # Scenario drill-down expander
+        with st.expander("🔍 Drill into another scenario"):
+            all_names   = [r.scenario.name for r in results]
+            chosen_name = st.selectbox("Select scenario:", all_names,
+                                       index=0, key="drilldown_sel")
+            chosen_res  = next(r for r in results
+                               if r.scenario.name == chosen_name)
+            chosen_row  = df[df["Scenario"] == chosen_name].iloc[0]
+            d1, d2, d3, d4 = st.columns(4)
+            d1.metric("Strategic Value",
+                      f"£{chosen_row['Strategic Value (£M)']:,.0f}M")
+            d2.metric("Capital Deployed",
+                      f"£{chosen_row['Capital Deployed (£M)']:,.0f}M")
+            d3.metric("Return Multiplier",
+                      f"{chosen_row['Return Multiplier']:.2f}×")
+            d4.metric("Deficit Probability",
+                      f"{chosen_row['Deficit Prob (%)']:.4f}%")
+            dc1, dc2 = st.columns(2)
+            with dc1:
+                st.plotly_chart(_build_waterfall_chart(chosen_res),
+                                use_container_width=True,
+                                config={"displayModeBar": False})
+            with dc2:
+                st.plotly_chart(_build_sector_donut(chosen_res),
+                                use_container_width=True,
+                                config={"displayModeBar": False})
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 2 — Scenario Analysis
@@ -758,7 +817,13 @@ with tab2:
     st.caption("Run the Portfolio Dashboard first to load scenario results.")
 
     if "results" not in st.session_state:
-        st.info("No results yet — run the analysis in **📊 Portfolio Dashboard**.")
+        st.markdown("""
+<div style="background:#0f1923;border:1px solid #1e3a5f;border-radius:7px;
+padding:2.5rem;text-align:center;margin-top:1rem">
+  <div style="font-size:2.5rem;margin-bottom:0.6rem">📈</div>
+  <div style="font-size:1rem;color:#8899aa">No results yet — run the analysis in
+  <b style="color:#00d4ff">📊 Portfolio Dashboard</b> first.</div>
+</div>""", unsafe_allow_html=True)
     else:
         results    = st.session_state["results"]
         run_budget = st.session_state.get("budget", budget)
@@ -781,6 +846,22 @@ with tab2:
             st.plotly_chart(_build_scenario_heatmap(df),
                             use_container_width=True,
                             config={"displayModeBar": False})
+
+        st.markdown("---")
+
+        # Scenario comparison
+        st.markdown("### Side-by-Side Scenario Comparison")
+        all_names = df["Scenario"].tolist()
+        cmp_c1, cmp_c2 = st.columns(2)
+        scen_a = cmp_c1.selectbox("Scenario A:", all_names,
+                                   index=0, key="cmp_a")
+        scen_b = cmp_c2.selectbox("Scenario B:", all_names,
+                                   index=2, key="cmp_b")
+        res_a = next(r for r in results if r.scenario.name == scen_a)
+        res_b = next(r for r in results if r.scenario.name == scen_b)
+        st.plotly_chart(_build_delta_bar(res_a, res_b),
+                        use_container_width=True,
+                        config={"displayModeBar": False})
 
         st.markdown("---")
 
@@ -940,7 +1021,11 @@ with tab3:
                                 use_container_width=True,
                                 config={"displayModeBar": False})
             else:
-                st.info("Run **📊 Portfolio Dashboard** first to enable the Base Case comparison.")
+                st.markdown("""
+<div style="background:#0f1923;border:1px solid #1e3a5f;border-radius:6px;
+padding:1rem;text-align:center;color:#5577aa;font-size:0.88rem">
+  Run <b style="color:#00d4ff">📊 Portfolio Dashboard</b> first to enable Base Case comparison.
+</div>""", unsafe_allow_html=True)
 
             # Selected portfolio
             st.markdown("### Selected Portfolio")
