@@ -727,10 +727,12 @@ padding:2.5rem;text-align:center;margin-top:1rem">
         with col_l:
             st.plotly_chart(_build_waterfall_chart(base_result),
                             use_container_width=True,
+                            key="base_waterfall",
                             config={"displayModeBar": False})
         with col_r:
             st.plotly_chart(_build_sector_donut(base_result),
                             use_container_width=True,
+                            key="base_donut",
                             config={"displayModeBar": False})
 
         # Row 3: MC Histogram + Cash Flow
@@ -739,6 +741,7 @@ padding:2.5rem;text-align:center;margin-top:1rem">
         with col_l2:
             st.plotly_chart(_build_mc_histogram(base_result.monte_carlo),
                             use_container_width=True,
+                            key="base_mc_hist",
                             config={"displayModeBar": True,
                                     "modeBarButtonsToRemove": ["toImage"]})
             # MC stats summary row
@@ -751,6 +754,7 @@ padding:2.5rem;text-align:center;margin-top:1rem">
             st.plotly_chart(
                 _build_cashflow_area_chart(base_result, base_result.scenario),
                 use_container_width=True,
+                key="base_cashflow_area",
                 config={"displayModeBar": True,
                         "modeBarButtonsToRemove": ["toImage"]})
 
@@ -802,10 +806,12 @@ padding:2.5rem;text-align:center;margin-top:1rem">
             with dc1:
                 st.plotly_chart(_build_waterfall_chart(chosen_res),
                                 use_container_width=True,
+                                key=f"drill_waterfall_{chosen_name}",
                                 config={"displayModeBar": False})
             with dc2:
                 st.plotly_chart(_build_sector_donut(chosen_res),
                                 use_container_width=True,
+                                key=f"drill_donut_{chosen_name}",
                                 config={"displayModeBar": False})
 
 
@@ -831,6 +837,7 @@ padding:2.5rem;text-align:center;margin-top:1rem">
 
         # Full-width scenario bar
         st.plotly_chart(_build_scenario_bar(df), use_container_width=True,
+                        key="tab2_scenario_bar",
                         config={"displayModeBar": False})
 
         st.markdown("---")
@@ -841,10 +848,12 @@ padding:2.5rem;text-align:center;margin-top:1rem">
         with col_l:
             st.plotly_chart(_build_risk_return_scatter(df),
                             use_container_width=True,
+                            key="tab2_risk_return",
                             config={"displayModeBar": False})
         with col_r:
             st.plotly_chart(_build_scenario_heatmap(df),
                             use_container_width=True,
+                            key="tab2_heatmap",
                             config={"displayModeBar": False})
 
         st.markdown("---")
@@ -861,6 +870,7 @@ padding:2.5rem;text-align:center;margin-top:1rem">
         res_b = next(r for r in results if r.scenario.name == scen_b)
         st.plotly_chart(_build_delta_bar(res_a, res_b),
                         use_container_width=True,
+                        key=f"tab2_compare_{scen_a}_{scen_b}",
                         config={"displayModeBar": False})
 
         st.markdown("---")
@@ -1019,6 +1029,7 @@ with tab3:
                 st.markdown("### Query Result vs Base Case")
                 st.plotly_chart(_build_delta_bar(run_result, base_r),
                                 use_container_width=True,
+                                key="tab3_delta_bar",
                                 config={"displayModeBar": False})
             else:
                 st.markdown("""
