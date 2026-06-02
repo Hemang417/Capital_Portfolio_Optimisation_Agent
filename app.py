@@ -695,11 +695,12 @@ st.markdown("""
 
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊  Portfolio Dashboard",
     "📈  Scenario Analysis",
     "🤖  Natural Language Query",
     "📖  About",
+    "⚙️  Workflow Run",
 ])
 
 
@@ -1147,6 +1148,280 @@ with tab4:
   <span class="badge">Monte Carlo</span>
   <span class="badge">DCF / NPV</span>
   <span class="badge">Greedy Knapsack</span>
+  <span class="badge">LangGraph</span>
+  <span class="badge">ReportLab</span>
 </div>
 """, unsafe_allow_html=True)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# TAB 5 — Workflow Run  (LangGraph multi-agent pipeline)
+# ════════════════════════════════════════════════════════════════════════════
+_WF_NODES = [
+    "data_validation_node",
+    "scenario_retrieval_node",
+    "financial_engine_node",
+    "commentary_node",
+    "risk_flag_node",
+    "human_approval_node",
+    "report_generation_node",
+]
+_WF_LABELS = {
+    "data_validation_node":    "1  Data Validation",
+    "scenario_retrieval_node": "2  Scenario Retrieval",
+    "financial_engine_node":   "3  Financial Engine",
+    "commentary_node":         "4a Commentary  (parallel)",
+    "risk_flag_node":          "4b Risk Flags  (parallel)",
+    "human_approval_node":     "5  Human Approval",
+    "report_generation_node":  "6  Report Generation",
+}
+_STATUS_ICON = {
+    "pending":  "⬜",
+    "running":  "🔄",
+    "complete": "✅",
+    "failed":   "❌",
+    "skipped":  "⏭️",
+}
+
+
+def _wf_status_html(node_status: dict) -> str:
+    rows = ""
+    for node in _WF_NODES:
+        st_val = node_status.get(node, "pending")
+        icon   = _STATUS_ICON.get(st_val, "⬜")
+        colour = (
+            "#00ff88" if st_val == "complete"
+            else "#ff4444" if st_val == "failed"
+            else "#00d4ff" if st_val == "running"
+            else "#5577aa"
+        )
+        rows += (
+            f'<div style="display:flex;align-items:center;gap:0.6rem;'
+            f'padding:0.35rem 0;border-bottom:1px solid #1e2a3a">'
+            f'<span style="font-size:1.1rem">{icon}</span>'
+            f'<span style="color:{colour};font-size:0.85rem;font-family:monospace">'
+            f'{_WF_LABELS.get(node, node)}</span></div>'
+        )
+    return f'<div style="background:#0f1923;border:1px solid #1e3a5f;border-radius:7px;padding:0.8rem 1rem">{rows}</div>'
+
+
+with tab5:
+    st.markdown("### LangGraph Multi-Agent Workflow")
+    st.caption(
+        "Runs the full 6-node pipeline: data validation → scenario retrieval → "
+        "financial engine → commentary + risk flags (parallel) → human approval → "
+        "report generation (JSON + CSV + PDF)."
+    )
+
+    # ── Initialise session state ──────────────────────────────────────────────
+    if "wf_graph" not in st.session_state:
+        from langgraph.checkpoint.memory import MemorySaver
+        from workflow.graph import build_graph
+        st.session_state.wf_graph        = build_graph(MemorySaver())
+        st.session_state.wf_thread_id    = None
+        st.session_state.wf_node_status  = {n: "pending" for n in _WF_NODES}
+        st.session_state.wf_interrupted  = False
+        st.session_state.wf_interrupt_pl = {}
+        st.session_state.wf_commentary   = {}
+        st.session_state.wf_risk_flags   = []
+        st.session_state.wf_report_paths = {}
+
+    # ── Sidebar-style controls ────────────────────────────────────────────────
+    wf_col1, wf_col2 = st.columns([2, 2])
+    with wf_col1:
+        wf_mode = st.selectbox(
+            "Mode",
+            ["Run All 22 Scenarios", "Natural Language Query"],
+            key="wf_mode",
+        )
+    with wf_col2:
+        wf_query = ""
+        if wf_mode == "Natural Language Query":
+            wf_query = st.text_input(
+                "Query",
+                placeholder='e.g. "tech crash with rising rates"',
+                key="wf_query_input",
+            )
+
+    wf_budget   = st.session_state.get("budget",  45_000_000)
+    wf_mc_iters = st.session_state.get("mc_iters", 10_000)
+
+    # ── Status panel ─────────────────────────────────────────────────────────
+    status_placeholder = st.empty()
+    status_placeholder.markdown(
+        _wf_status_html(st.session_state.wf_node_status),
+        unsafe_allow_html=True,
+    )
+
+    # ── Start button ──────────────────────────────────────────────────────────
+    if st.button("▶  Start Workflow", type="primary", key="wf_start"):
+        import uuid as _uuid
+        from langgraph.types import Command
+
+        thread_id = str(_uuid.uuid4())
+        st.session_state.wf_thread_id    = thread_id
+        st.session_state.wf_node_status  = {n: "pending" for n in _WF_NODES}
+        st.session_state.wf_interrupted  = False
+        st.session_state.wf_interrupt_pl = {}
+        st.session_state.wf_commentary   = {}
+        st.session_state.wf_risk_flags   = []
+        st.session_state.wf_report_paths = {}
+
+        intent = "run_all" if wf_mode == "Run All 22 Scenarios" else (wf_query or "run_all")
+        config = {"configurable": {"thread_id": thread_id}}
+        graph  = st.session_state.wf_graph
+
+        initial = {
+            "user_intent":   intent,
+            "budget_gbp":    wf_budget,
+            "mc_iterations": wf_mc_iters,
+        }
+
+        # Stream until graph pauses or completes
+        try:
+            for event in graph.stream(initial, config=config, stream_mode="updates"):
+                for node_name in event:
+                    st.session_state.wf_node_status[node_name] = "complete"
+                    # Capture commentary and risk flags as they arrive
+                    node_out = event[node_name]
+                    if "commentary"  in node_out:
+                        st.session_state.wf_commentary  = node_out["commentary"]
+                    if "risk_flags"  in node_out:
+                        st.session_state.wf_risk_flags  = node_out["risk_flags"]
+                    if "report_paths" in node_out:
+                        st.session_state.wf_report_paths = node_out["report_paths"]
+                status_placeholder.markdown(
+                    _wf_status_html(st.session_state.wf_node_status),
+                    unsafe_allow_html=True,
+                )
+        except Exception as _e:
+            st.error(f"Workflow error: {_e}")
+
+        # Check for interrupt
+        snapshot = graph.get_state(config)
+        is_interrupted = bool(snapshot.next)
+        if is_interrupted:
+            try:
+                for task in (snapshot.tasks or []):
+                    if getattr(task, "interrupts", None):
+                        st.session_state.wf_interrupt_pl = task.interrupts[0].value
+                        break
+            except Exception:
+                pass
+            st.session_state.wf_interrupted = True
+        st.rerun()
+
+    # ── Commentary stream panel ────────────────────────────────────────────────
+    if st.session_state.wf_commentary:
+        st.markdown("---")
+        st.markdown("### Commentary")
+        expls = st.session_state.wf_commentary.get("chart_explanations", {})
+        if expls:
+            for chart, text in expls.items():
+                st.markdown(
+                    f'<div class="params-card"><b style="color:#00d4ff">'
+                    f'{chart.replace("_"," ").title()}</b><br>{text}</div>',
+                    unsafe_allow_html=True,
+                )
+        sugs = st.session_state.wf_commentary.get("suggestions", [])
+        if sugs:
+            st.markdown("**Strategic Suggestions**")
+            for s in sugs:
+                urg = s.get("urgency", "—")
+                col = "#ff4444" if urg == "High" else "#ffaa00" if urg == "Medium" else "#00ff88"
+                st.markdown(
+                    f'<div style="background:#0f1923;border-left:3px solid {col};'
+                    f'padding:0.6rem 1rem;border-radius:0 5px 5px 0;margin:0.3rem 0">'
+                    f'<span style="color:{col};font-size:0.7rem;text-transform:uppercase">'
+                    f'{urg}</span>  {s.get("action","")}<br>'
+                    f'<span style="color:#5577aa;font-size:0.8rem">{s.get("rationale","")}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+    # ── Risk flags stream panel ───────────────────────────────────────────────
+    if st.session_state.wf_risk_flags:
+        st.markdown("---")
+        st.markdown("### Risk Flags")
+        for flag in st.session_state.wf_risk_flags:
+            sev   = flag["severity"]
+            col   = "#ff4444" if sev == "HIGH" else "#ffaa00" if sev == "MEDIUM" else "#00ff88"
+            icon  = "🔴" if sev == "HIGH" else "🟡" if sev == "MEDIUM" else "🟢"
+            st.markdown(
+                f'<div class="rag-card" style="border-color:{col}">'
+                f'{icon} <b style="color:{col}">[{sev}]</b>  {flag["description"]}<br>'
+                f'<span style="color:#5577aa;font-size:0.78rem">'
+                f'Metric: {flag["affected_metric"]}</span></div>',
+                unsafe_allow_html=True,
+            )
+
+    # ── Human approval checkpoint ─────────────────────────────────────────────
+    if st.session_state.get("wf_interrupted"):
+        pl = st.session_state.wf_interrupt_pl
+        res = pl.get("results", {})
+        st.markdown("---")
+        st.markdown(
+            '<div style="background:#0f1923;border:2px solid #ffaa00;border-radius:8px;'
+            'padding:1.2rem 1.5rem;margin:0.5rem 0">'
+            '<span style="color:#ffaa00;font-size:0.75rem;text-transform:uppercase;'
+            'letter-spacing:0.1em">⏸ Human Approval Required</span>'
+            f'<div style="margin-top:0.6rem;color:#e0e6f0;font-size:0.95rem">'
+            f'Strategic Value: <b style="color:#00d4ff">£{res.get("total_npv_m",0):,.1f}M</b>  |  '
+            f'Return: <b style="color:#00ff88">{res.get("return_multiplier",0):.2f}×</b>  |  '
+            f'Deficit: <b>{res.get("deficit_probability_pct",0):.4f}%</b></div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        ap_c1, ap_c2 = st.columns(2)
+        if ap_c1.button("✅  Approve — Generate Reports", type="primary", key="wf_approve"):
+            from langgraph.types import Command
+            config = {"configurable": {"thread_id": st.session_state.wf_thread_id}}
+            graph  = st.session_state.wf_graph
+            st.session_state.wf_node_status["human_approval_node"] = "complete"
+            for event in graph.stream(
+                Command(resume="yes"), config=config, stream_mode="updates"
+            ):
+                for node_name in event:
+                    st.session_state.wf_node_status[node_name] = "complete"
+                    node_out = event[node_name]
+                    if "report_paths" in node_out:
+                        st.session_state.wf_report_paths = node_out["report_paths"]
+            st.session_state.wf_interrupted = False
+            st.rerun()
+
+        if ap_c2.button("❌  Reject — End Workflow", key="wf_reject"):
+            from langgraph.types import Command
+            config = {"configurable": {"thread_id": st.session_state.wf_thread_id}}
+            graph  = st.session_state.wf_graph
+            st.session_state.wf_node_status["human_approval_node"] = "complete"
+            for event in graph.stream(
+                Command(resume="no"), config=config, stream_mode="updates"
+            ):
+                pass
+            st.session_state.wf_interrupted = False
+            st.info("Workflow terminated — no reports generated.")
+            st.rerun()
+
+    # ── Report paths ──────────────────────────────────────────────────────────
+    if st.session_state.wf_report_paths:
+        st.markdown("---")
+        st.markdown("### Reports Generated")
+        for fmt, path in st.session_state.wf_report_paths.items():
+            st.markdown(
+                f'<div class="params-card">'
+                f'<b style="color:#00d4ff">{fmt.upper()}</b>  {path}</div>',
+                unsafe_allow_html=True,
+            )
+        # PDF download button
+        pdf_path = st.session_state.wf_report_paths.get("pdf")
+        if pdf_path and os.path.exists(pdf_path):
+            with open(pdf_path, "rb") as _f:
+                st.download_button(
+                    "⬇  Download PDF Board Summary",
+                    data=_f.read(),
+                    file_name=os.path.basename(pdf_path),
+                    mime="application/pdf",
+                    key="wf_pdf_download",
+                )
 
