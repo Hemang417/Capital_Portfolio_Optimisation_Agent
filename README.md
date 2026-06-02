@@ -1,11 +1,12 @@
 # Capital Portfolio Optimisation Agent
 
-**MSc Financial Data Analytics | Python · NumPy · Monte Carlo · Agentic RAG**
+**Python · NumPy · Monte Carlo · Agentic RAG · LangGraph**
 
 A modular financial agent that autonomously selects optimal asset allocations across 22 distinct
 operational scenarios using net present value ranking, a budget-constrained greedy optimiser, and a
-10,000-iteration Monte Carlo shock engine — with an agentic RAG layer for natural language querying
-and a Bloomberg-style Streamlit dashboard.
+10,000-iteration Monte Carlo shock engine. The orchestration layer is built as a LangGraph
+multi-agent workflow with an agentic RAG layer for natural language querying and a Bloomberg-style
+Streamlit dashboard.
 
 > **Headline results (base case)**
 > - Capital budget: **£45,000,000**
@@ -20,20 +21,21 @@ and a Bloomberg-style Streamlit dashboard.
 1. [Project Overview](#project-overview)
 2. [Architecture](#architecture)
 3. [Project Structure](#project-structure)
-4. [How It Works](#how-it-works)
-5. [Data Layer — Excel Pipeline](#data-layer--excel-pipeline)
-6. [The 22 Scenarios](#the-22-scenarios)
-7. [Budget-Constrained Optimiser](#budget-constrained-optimiser)
-8. [Monte Carlo Shock Engine](#monte-carlo-shock-engine)
-9. [Agentic RAG — Natural Language Query](#agentic-rag--natural-language-query)
-10. [Web App — Streamlit Dashboard](#web-app--streamlit-dashboard)
-11. [Test Suite](#test-suite)
-12. [Quick Start](#quick-start)
-13. [Running the Agent](#running-the-agent)
-14. [Output Files](#output-files)
-15. [Using Real Firm Data](#using-real-firm-data)
-16. [Adjusting the Model](#adjusting-the-model)
-17. [Dependencies](#dependencies)
+4. [LangGraph Workflow](#langgraph-workflow)
+5. [How It Works](#how-it-works)
+6. [Data Layer — Excel Pipeline](#data-layer--excel-pipeline)
+7. [The 22 Scenarios](#the-22-scenarios)
+8. [Budget-Constrained Optimiser](#budget-constrained-optimiser)
+9. [Monte Carlo Shock Engine](#monte-carlo-shock-engine)
+10. [Agentic RAG — Natural Language Query](#agentic-rag--natural-language-query)
+11. [Web App — Streamlit Dashboard](#web-app--streamlit-dashboard)
+12. [Test Suite](#test-suite)
+13. [Quick Start](#quick-start)
+14. [Running the Agent](#running-the-agent)
+15. [Output Files](#output-files)
+16. [Using Real Firm Data](#using-real-firm-data)
+17. [Adjusting the Model](#adjusting-the-model)
+18. [Dependencies](#dependencies)
 
 ---
 
@@ -43,15 +45,16 @@ The agent solves a capital allocation problem: given a fixed investment budget a
 strategic projects, which combination maximises net present value — and how resilient is that
 portfolio under economic stress?
 
-Five key capabilities:
+Six key capabilities:
 
 | Capability | Detail |
 |---|---|
-| **Modular architecture** | Raw data layer (`data/`) separated from calculation logic (`engine/`) and orchestration (`agent/`) |
+| **LangGraph workflow** | 6-node multi-agent StateGraph with parallel execution, human-in-the-loop interrupt, and conditional routing |
+| **Modular architecture** | Raw data layer (`data/`) separated from calculation logic (`engine/`) and workflow orchestration (`workflow/`) |
 | **Autonomous scenario processing** | Loops all 22 scenarios with zero manual reconfiguration between runs |
 | **Probabilistic stress testing** | 10,000-iteration Monte Carlo confirms portfolio resilience across every scenario |
 | **Agentic RAG** | Natural language queries resolved to scenario parameters via reasoning-driven retrieval with confidence scoring |
-| **Bloomberg-style dashboard** | Interactive Streamlit web app with 8 Plotly charts, drill-down, and scenario comparison |
+| **Bloomberg-style dashboard** | Interactive Streamlit web app with 8 Plotly charts, drill-down, scenario comparison, and live workflow visualisation |
 
 ---
 
@@ -65,9 +68,10 @@ Five key capabilities:
 +----------------------------+-----------------------------+
                              |
 +----------------------------v-----------------------------+
-|              agent/portfolio_agent.py                    |
-|   run()           -- loops 22 scenarios autonomously     |
-|   run_query()     -- agentic RAG mode                    |
+|           workflow/  (LangGraph StateGraph)              |
+|  state.py      -- WorkflowState TypedDict                |
+|  graph.py      -- StateGraph edges and compilation       |
+|  nodes.py      -- 6 node functions (one per agent)       |
 +----+---------------------+--------------------------------+
      |                     |
 +----v----+      +---------v-------------------------------+
@@ -93,7 +97,8 @@ Five key capabilities:
 +----v----------------------------------------------------+
 |              llm/claude_client.py  (Groq API)           |
 |  llama-3.1-8b-instant     -- query planning/refinement  |
-|  llama-3.3-70b-versatile  -- confidence scoring/compose |
+|  llama-3.3-70b-versatile  -- scoring, composition,      |
+|                               commentary generation     |
 +----------------------------------------------------------+
 ```
 
@@ -104,13 +109,18 @@ Five key capabilities:
 ```
 Capital_Portfolio_Optimisation_Agent/
 |
-+-- app.py                       # Streamlit Bloomberg-style dashboard
-+-- main.py                      # CLI entry point
++-- app.py                       # Streamlit Bloomberg-style dashboard (5 tabs)
++-- main.py                      # CLI entry point — invokes LangGraph workflow
 +-- models.py                    # Shared ScenarioRunResult dataclass
 +-- requirements.txt             # Python dependencies
 +-- create_sample_data.py        # Regenerates investment_pipeline.xlsx
 +-- investment_pipeline.xlsx     # Investment project data (18 sample projects)
 |                                # Replace rows with your firm's real pipeline
+|
++-- workflow/
+|   +-- state.py                 # WorkflowState TypedDict (shared across all nodes)
+|   +-- graph.py                 # StateGraph definition, edges, build_graph()
+|   +-- nodes.py                 # 6 node functions — one agent per responsibility
 |
 +-- data/
 |   +-- assets.py                # Reads investment pipeline from Excel
@@ -122,7 +132,7 @@ Capital_Portfolio_Optimisation_Agent/
 |   +-- monte_carlo.py           # Vectorised 10,000-iteration MC engine
 |
 +-- agent/
-|   +-- portfolio_agent.py       # run() loops 22 scenarios / run_query() agentic RAG
+|   +-- portfolio_agent.py       # Legacy orchestrator (kept; wrapped by workflow nodes)
 |
 +-- retrieval/
 |   +-- scenario_store.py        # TF-IDF vector index over 22 scenario documents
@@ -138,7 +148,8 @@ Capital_Portfolio_Optimisation_Agent/
 |
 +-- tests/
 |   +-- conftest.py              # Shared pytest fixtures
-|   +-- test_suite.py            # 75 tests across 9 classes
+|   +-- test_suite.py            # 75 tests across 9 classes (engine, RAG, integration)
+|   +-- test_workflow.py         # 16 tests across 6 classes (LangGraph workflow)
 |
 +-- .streamlit/
 |   +-- config.toml              # Dark theme for Streamlit Cloud
@@ -146,57 +157,123 @@ Capital_Portfolio_Optimisation_Agent/
 +-- output/                      # Created at runtime
     +-- results_<timestamp>.json
     +-- wave1_roadmap_<timestamp>.csv
+    +-- board_summary_<timestamp>.pdf
 ```
+
+---
+
+## LangGraph Workflow
+
+**Files:** `workflow/state.py`, `workflow/graph.py`, `workflow/nodes.py`
+
+The orchestration layer is a LangGraph `StateGraph` where each major responsibility is a separate
+node. The existing `engine/`, `retrieval/`, and `llm/` modules are the internal implementation of
+their respective nodes — they are not modified.
+
+### Graph Topology
+
+```
+START
+  --> data_validation_node       Node 1: validate Excel assets
+  --> scenario_retrieval_node    Node 2: resolve user intent to Scenario(s)
+  --> financial_engine_node      Node 3: NPV + optimiser + Monte Carlo
+  --> commentary_node   ]
+  --> risk_flag_node    ]        Nodes 4a+4b: run in PARALLEL
+  --> human_approval_node        Node 5: interrupt() -- pauses for yes/no
+  --> report_generation_node     Node 6: JSON + CSV + 3-page PDF (if approved)
+  --> END
+```
+
+### Node Reference
+
+| Node | Purpose | Inputs from state | Outputs to state |
+|---|---|---|---|
+| `data_validation_node` | Load Excel, validate assets (sectors, discount rate, sigma, 8-year CFs) | — | `validated_assets`, `validation_errors` |
+| `scenario_retrieval_node` | `"run_all"` → 22 scenarios; NL query → AgenticRAG composed Scenario | `user_intent` | `scenario`, `rag_confidence` |
+| `financial_engine_node` | Apply modifiers, greedy optimiser, Monte Carlo | `validated_assets`, `scenario`, `budget_gbp`, `mc_iterations` | `engine_result` |
+| `commentary_node` | Groq LLM generates chart explanations + 3-5 ranked suggestions | `engine_result` | `commentary` |
+| `risk_flag_node` | Flags sector concentration >60%, deficit prob >0%, std/mean >10%, low RAG confidence | `engine_result`, `rag_confidence` | `risk_flags` |
+| `human_approval_node` | LangGraph `interrupt()` — pauses, shows results + flags, waits for yes/no | `engine_result`, `risk_flags`, `commentary` | `human_approved` |
+| `report_generation_node` | JSON + CSV via `reporting/`; 3-page PDF via reportlab | `engine_result`, `commentary`, `risk_flags` | `report_paths` |
+
+### Shared State
+
+`workflow/state.py` defines `WorkflowState` — a single TypedDict that every node reads from and
+writes to. LangGraph merges partial state updates automatically.
+
+```python
+class WorkflowState(TypedDict):
+    user_intent:       str
+    budget_gbp:        float
+    mc_iterations:     int
+    validated_assets:  Optional[list]
+    validation_errors: Optional[list]
+    scenario:          Optional[Any]   # Scenario or List[Scenario]
+    rag_confidence:    Optional[float]
+    engine_result:     Optional[Any]   # ScenarioRunResult or List[...]
+    commentary:        Optional[dict]
+    risk_flags:        Optional[list]
+    human_approved:    Optional[bool]
+    report_paths:      Optional[dict]
+```
+
+### PDF Board Summary (3 pages)
+
+When the workflow is approved, `report_generation_node` generates a PDF via reportlab:
+
+| Page | Contents |
+|---|---|
+| 1 — Executive Summary | Key metrics in large font, top 3 risk flags, first 2 strategic suggestions |
+| 2 — Portfolio Table | Project name, sector, capex, NPV, PI for each selected asset |
+| 3 — Monte Carlo Analysis | Mean, P05, P95, deficit probability, plain-English interpretation |
 
 ---
 
 ## How It Works
 
-### Standard mode — `python main.py`
-
-For each of the 22 scenarios:
+### Workflow mode — `python main.py`
 
 ```
-1. Load 18 investment projects from investment_pipeline.xlsx
+1. data_validation_node
+      Load investment_pipeline.xlsx via data/assets.py
+      Validate: sectors, discount_rate [0.01-0.30], sigma [0.05-0.30], 8 CFs
+      Invalid assets excluded — workflow continues with clean subset
 
-2. Apply scenario modifiers:
-      adjusted_CF    = base_CF    x cash_flow_modifier
-      adjusted_capex = base_capex x capex_modifier
-      adjusted_rate  = base_rate  + discount_rate_delta
+2. scenario_retrieval_node
+      "run_all"  -> load all 22 scenarios from data/scenarios.py
+      NL query   -> AgenticRAG pipeline -> single composed Scenario + confidence
 
-3. Calculate scenario-adjusted NPV for every project:
-      NPV = sum( CF_t / (1+r)^t )  -  capex
-
-4. Rank projects by Profitability Index:
+3. financial_engine_node
+      Apply scenario modifiers (CF x, capex x, rate +)
+      NPV = sum(CF_t / (1+r)^t) - capex
       PI = NPV / capex
+      Greedy knapsack: select highest-PI until budget exhausted
+      Monte Carlo: 10,000-iteration shock engine
 
-5. Greedy budget allocation:
-      Select highest-PI projects until budget is exhausted
+4. [PARALLEL] commentary_node + risk_flag_node
+      commentary  -> Groq LLM chart explanations + strategic suggestions
+      risk_flags  -> sector concentration, deficit prob, volatility checks
 
-6. Monte Carlo stress test (10,000 iterations):
-      Shock each cash flow: CF_shocked = CF x (1 + sigma x epsilon),  epsilon ~ N(0,1)
-      Report: mean, std dev, P5, P95, deficit probability
+5. human_approval_node
+      interrupt() pauses graph
+      CLI: prints summary, prompts "yes/no"
+      Streamlit: renders Approve/Reject buttons
+      Resume via Command(resume=user_input)
 
-7. Print scenario report, save JSON + CSV
+6. report_generation_node (if approved)
+      JSON + CSV  via reporting/file_reporter.py
+      PDF         via reportlab (3 pages)
+      Writes paths to report_paths state key
 ```
 
-### Agentic RAG mode — `python main.py --query "..."`
+### Natural language query mode — `python main.py --query "..."`
 
 ```
-1. User submits natural language query
-
-2. Standard RAG (shown for contrast):
-      TF-IDF embed query -> cosine similarity -> top-1 scenario
-      Limitation: drops multi-component stressors silently
-
-3. Agentic RAG:
-      Step 1  LLM plans search terms from the query
-      Step 2  TF-IDF vector search on planned terms -> top-3 candidates
-      Step 3  LLM scores confidence 0.0-1.0 on retrieved candidates
-      Step 4  If confidence < 0.70: LLM refines terms, repeat (max 3 attempts)
-      Step 5  LLM composes custom Scenario from retrieved candidates
-
-4. Custom Scenario passed to financial engine -> NPV -> MC -> results
+1. Agentic RAG resolves query to a single composed Scenario
+2. Same financial pipeline runs (NPV -> optimiser -> Monte Carlo)
+3. Commentary and risk flags generated
+4. Human approval checkpoint
+5. Reports generated if approved
 ```
 
 ---
@@ -213,12 +290,12 @@ Provides the **investment projects** (the *what* to invest in):
 - Project names, sectors, upfront costs
 - 8 years of projected net cash flows
 - Risk-adjusted discount rates
-- Volatility estimates for Monte Carlo
+- Volatility estimates for Monte Carlo and risk flag checks
 
 ### What the Excel file is NOT for
 
-The **22 scenarios** (the *conditions* to test under) are defined separately in `data/scenarios.py`
-and are what the agentic RAG searches through. The Excel file has no role in RAG retrieval.
+The **22 scenarios** (the *conditions* to test under) are defined in `data/scenarios.py` and are
+what the agentic RAG searches through. The Excel file has no role in RAG retrieval.
 
 ### Column Reference
 
@@ -226,7 +303,7 @@ and are what the agentic RAG searches through. The Excel file has no role in RAG
 |---|---|---|---|
 | `id` | Text | `P01` | Unique project identifier |
 | `name` | Text | `National Grid Digitalisation` | Project name shown in all reports |
-| `sector` | Text | `Infrastructure` | Must match scenario sector filters |
+| `sector` | Text | `Infrastructure` | Must be one of the 5 valid sectors |
 | `capex` | Number | `5000000` | Total upfront capital in GBP (no commas) |
 | `Y1` | Number | `12295000` | Net cash inflow Year 1 (revenue minus operating costs) |
 | `Y2` to `Y8` | Number | `15369000` | Net cash inflows Years 2-8 (use 0 if project ends earlier) |
@@ -372,7 +449,7 @@ Agentic result for the same query:
 ```
 Composed: "Tech Slowdown + Rate Pressure"
   cash_flow_modifier    = 0.90    (blends Tech Slump 0.80 + Rate Surge 1.00)
-  discount_rate_delta   = +0.025  (blends +0.03 and +0.02)
+  discount_rate_delta   = +0.025
   capex_modifier        = 1.05
   risk_sigma_multiplier = 1.25
   confidence            = 0.84,  attempts = 1
@@ -386,17 +463,9 @@ unreliable context from reaching the NPV calculations.
 | Model | Role |
 |---|---|
 | `llama-3.1-8b-instant` (Groq) | Fast — query planning and refinement |
-| `llama-3.3-70b-versatile` (Groq) | Accurate — confidence scoring and scenario composition |
+| `llama-3.3-70b-versatile` (Groq) | Accurate — confidence scoring, composition, commentary |
 
-Groq provides free API access at [console.groq.com](https://console.groq.com). The Anthropic SDK
-implementation with prompt caching is kept in `llm/claude_client.py` (commented) for reference.
-
-### Usage
-
-```bash
-set GROQ_API_KEY=gsk_...
-python main.py --query "What happens to our portfolio in a tech crash with rising rates?"
-```
+Groq provides free API access at [console.groq.com](https://console.groq.com).
 
 ---
 
@@ -406,14 +475,15 @@ python main.py --query "What happens to our portfolio in a tech crash with risin
 
 A Bloomberg-style dark financial dashboard built with Streamlit and Plotly.
 
-### Four tabs
+### Five tabs
 
 | Tab | Contents |
 |---|---|
-| **Portfolio Dashboard** | Per-scenario progress bar, Wave-1 KPI cards, NPV waterfall chart, sector allocation donut, Monte Carlo distribution histogram (P05/Mean/P95), 8-year stacked cashflow area chart, portfolio table with IRR column, scenario drill-down expander |
-| **Scenario Analysis** | 22-scenario horizontal bar (red-to-green gradient), risk-return scatter plot (base case starred), scenario metrics heatmap, side-by-side scenario A vs B comparison |
-| **Natural Language Query** | Standard RAG card (red) vs Agentic RAG card (green), composed scenario parameters, full NPV/MC results, query vs base-case delta chart |
-| **About** | Architecture diagram, key metrics table, tech stack |
+| **Portfolio Dashboard** | Per-scenario progress bar, Wave-1 KPI cards, NPV waterfall chart, sector allocation donut, Monte Carlo histogram (P05/Mean/P95), 8-year stacked cashflow area chart, portfolio table with IRR column, scenario drill-down expander |
+| **Scenario Analysis** | 22-scenario horizontal bar chart, risk-return scatter (base case starred), metrics heatmap, side-by-side scenario A vs B comparison |
+| **Natural Language Query** | Standard RAG (red) vs Agentic RAG (green) comparison cards, composed scenario parameters, full NPV/MC results, query vs base-case delta chart |
+| **About** | Architecture diagram, key metrics table, tech stack badges |
+| **Workflow Run** | LangGraph pipeline visualisation — per-node status indicators (pending/running/complete), live commentary and risk flag streaming, human approval Approve/Reject buttons, PDF download button |
 
 ### Run locally
 
@@ -436,41 +506,45 @@ streamlit run app.py
 
 ## Test Suite
 
-**Files:** `tests/conftest.py`, `tests/test_suite.py`
+**Files:** `tests/conftest.py`, `tests/test_suite.py`, `tests/test_workflow.py`
 
-A rigorous pytest suite covering correctness, edge cases, adversarial inputs, and statistical
-invariants across every module. **75 tests across 9 classes — all passing in under 5 seconds.**
+**91 tests across 15 classes — all passing.**
 
 ```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Engine + RAG + integration tests only
 python -m pytest tests/test_suite.py -v
+
+# LangGraph workflow tests only
+python -m pytest tests/test_workflow.py -v
 ```
 
-### Coverage by class
+### test_suite.py — 75 tests, 9 classes
 
 | Class | Tests | What is verified |
 |---|---|---|
-| `TestNPVEngine` | 12 | Known-value NPV assertions (hand-computed), IRR binary search convergence, NaN on no sign-change, profitability index formula, 10,000-call vectorisation performance |
-| `TestOptimizer` | 14 | PI ordering, budget never exceeded, `per_asset_npv` integrity, real 929M base-case assertion, empty portfolio, all-negative NPV, exact budget fit, over-budget rejection, stable sort on PI ties, 1,000-asset performance |
-| `TestMonteCarlo` | 11 | Zero deficit on real base-case portfolio, MC mean within 2% of deterministic NPV, P05 < mean < P95 ordering, reproducibility with fixed seed, zero-sigma degeneracy, n=10k vs n=50k convergence, empty-asset short-circuit |
-| `TestScenarios` | 8 | Exactly 22 scenarios, unique IDs 1–22, base-case neutral modifiers, severe recession has lowest CF modifier, `to_document()` contents, valid sector names, modifier sanity ranges |
-| `TestAssets` | 6 | 18 assets loaded, unique IDs, 8-year cash flows, discount rate and sigma in valid ranges, `FileNotFoundError` on missing Excel |
-| `TestScenarioStore` | 7 | `top_k` count, cosine scores ∈ [0,1], sorted descending, known-query semantic routing, empty query no crash |
-| `TestStandardRAG` | 4 | Return type, semantic routing, limitation proof (single result for multi-component query) |
-| `TestAgenticRAG` | 8 | All LLM calls mocked — confident first attempt skips re-query, low confidence triggers refinement loop, `MAX_ATTEMPTS` respected, bad-JSON fallback, `CONFIDENCE_THRESHOLD = 0.70`, candidates list populated |
-| `TestIntegration` | 5 | Full real-data pipeline: base case 929M, all 22 scenarios complete without error, recession < base < optimistic NPV ordering, sector filter enforced in tech-only scenario |
+| `TestNPVEngine` | 12 | Known-value NPV assertions, IRR binary search, NaN on no sign-change, PI formula, 10,000-call performance |
+| `TestOptimizer` | 14 | PI ordering, budget constraint, `per_asset_npv` integrity, 929M base-case, edge cases (empty, negative NPV, exact fit, over-budget), stable sort, 1,000-asset performance |
+| `TestMonteCarlo` | 11 | Zero deficit on real portfolio, MC mean vs deterministic NPV, P05 < mean < P95, reproducibility, zero-sigma degeneracy, n=10k vs n=50k convergence |
+| `TestScenarios` | 8 | Exactly 22 scenarios, unique IDs, base-case neutral modifiers, modifier sanity ranges |
+| `TestAssets` | 6 | 18 assets, unique IDs, 8-year CFs, rate/sigma ranges, FileNotFoundError on missing Excel |
+| `TestScenarioStore` | 7 | top_k count, scores in [0,1], sorted descending, known-query semantic routing |
+| `TestStandardRAG` | 4 | Return type, semantic routing, limitation proof |
+| `TestAgenticRAG` | 8 | All LLM calls mocked — re-query loop, MAX_ATTEMPTS, bad-JSON fallback, threshold=0.70 |
+| `TestIntegration` | 5 | Full pipeline 929M, all 22 scenarios, recession < base < optimistic, sector filter enforced |
 
-### Sample output
+### test_workflow.py — 16 tests, 6 classes
 
-```
-tests/test_suite.py::TestNPVEngine::test_npv_zero_cashflows PASSED
-tests/test_suite.py::TestNPVEngine::test_npv_single_year_breakeven PASSED
-tests/test_suite.py::TestNPVEngine::test_irr_known_value PASSED
-...
-tests/test_suite.py::TestIntegration::test_base_case_npv_is_929M PASSED
-tests/test_suite.py::TestIntegration::test_sector_filter_respected_tech_only PASSED
-
-75 passed in 4.52s
-```
+| Class | Tests | What is verified |
+|---|---|---|
+| `TestFullGraphExecution` | 1 | Full graph runs without error on valid input |
+| `TestDataValidationNode` | 3 | Invalid sector excluded, valid assets retained, discount_rate range check |
+| `TestHumanApprovalNode` | 3 | Rejection sets `human_approved=False`, approval sets `True`, rejection stops graph before report node |
+| `TestParallelNodes` | 3 | `commentary_node` writes `commentary` key, `risk_flag_node` writes `risk_flags`, both complete in graph |
+| `TestRiskFlagNode` | 4 | HIGH flag on >60% concentration, no flag under 60%, MEDIUM on RAG confidence <0.70, MEDIUM on std/mean >10% |
+| `TestReportGenerationNode` | 2 | All three output files (json, csv, pdf) exist on disk; skipped when not approved |
 
 ---
 
@@ -484,14 +558,18 @@ cd Capital_Portfolio_Optimisation_Agent
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Run the agent (investment_pipeline.xlsx included)
+# 3. Run the LangGraph workflow (all 22 scenarios)
 python main.py
 
-# 4. Or launch the web dashboard
+# 4. Run with a natural language query
+set GROQ_API_KEY=gsk_...
+python main.py --query "What if there is a tech crash with rising rates?"
+
+# 5. Launch the Streamlit dashboard
 streamlit run app.py
 
-# 5. Run the test suite
-python -m pytest tests/test_suite.py -v
+# 6. Run all 91 tests
+python -m pytest tests/ -v
 ```
 
 ---
@@ -499,7 +577,7 @@ python -m pytest tests/test_suite.py -v
 ## Running the Agent
 
 ```bash
-# Default run -- all 22 scenarios, £45M budget, 10,000 MC iterations
+# Default -- all 22 scenarios, £45M budget, 10,000 MC iterations
 python main.py
 
 # Custom budget
@@ -512,7 +590,7 @@ python main.py --mc-iterations 50000
 python main.py --query "What if there is a tech crash with rising interest rates?"
 
 # Combine flags
-python main.py --budget 75000000 --mc-iterations 20000 --seed 7
+python main.py --budget 75000000 --mc-iterations 20000
 ```
 
 ---
@@ -553,6 +631,13 @@ All output is saved to the `output/` directory, created automatically on first r
 | `deficit_probability` | Fraction of MC runs with negative total NPV |
 | `selected_asset_ids` | Pipe-separated list of selected project IDs |
 
+### `board_summary_<timestamp>.pdf`
+
+Three-page PDF generated by `report_generation_node` via reportlab when the workflow is approved:
+- **Page 1** — Executive Summary: key metrics, top 3 risk flags, top 2 strategic suggestions
+- **Page 2** — Selected Portfolio Table: project name, sector, capex, NPV, PI
+- **Page 3** — Monte Carlo Analysis: statistics table, plain-English interpretation
+
 ---
 
 ## Using Real Firm Data
@@ -580,6 +665,7 @@ python create_sample_data.py
 | Sector filters per scenario | Edit `eligible_sectors` in `data/scenarios.py` |
 | MC iterations | `python main.py --mc-iterations 50000` |
 | LLM backend | Switch Groq / Anthropic in `llm/claude_client.py` (both implementations present) |
+| Workflow nodes | Edit `workflow/nodes.py` — engine/, retrieval/, llm/, data/ unchanged |
 
 ---
 
@@ -589,17 +675,15 @@ python create_sample_data.py
 numpy>=1.26.0       vectorised NPV and Monte Carlo calculations
 pandas>=2.0.0       Excel pipeline reading
 openpyxl>=3.1.0     Excel file support (.xlsx)
-groq>=0.9.0         Groq API for agentic RAG (free tier)
+groq>=0.9.0         Groq API for LLM calls (free tier)
 scikit-learn>=1.3.0 TF-IDF vector index for scenario retrieval
 streamlit>=1.35.0   Web dashboard
 plotly>=5.18.0      Interactive financial charts
-pytest>=7.4.0       Test suite
+langgraph>=0.2.36   Multi-agent StateGraph orchestration
+reportlab>=4.1.0    PDF board summary generation
+pytest>=7.4.0       Test suite (91 tests)
 ```
 
 ```bash
 pip install -r requirements.txt
 ```
-
----
-
-*MSc Financial Data Analytics*
